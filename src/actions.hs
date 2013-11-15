@@ -1,62 +1,55 @@
 
-
 module Actions( parseAct
               , getAct
               )where
 
 import Artifact
-import Manifest
 import Control.Monad {- (liftM, liftM2) -}
 import Control.Applicative
-import Data.List ((\\))
+import Data.List ((\\), intersect)
+import Data.Maybe (catMaybes)
+import qualified Data.Map.Lazy as Map
+import System.FilePath.Find {- (fold, always) -}
+
+fromRef :: RefItem -> Aliases -> Maybe Item
+fromRef ref als =
+    Map.lookup (riName ref) als
 
 
-splitAlises2 :: FilePath -> Bool -> IO ()
-splitAlises2 root _ =
-      parseDir root
-  >>= \dirArts -> return (filter isAlias dirArts)
-  >>= \aliases -> print aliases
-  >>  return (dirArts \\ aliases)
-  >>= \reqs -> print reqs
-
--- parseAct3 :: FilePath -> Bool -> IO ()
-splitArtifacts :: [Artifact] -> ([Artifact],[Artifact],[Artifact])
-splitArtifacts arts = (reqs, refs, aliases)
+-- returs
+boilToItems :: [RefItem] -> Aliases -> ([Item], [String])
+boilToItems refs als = (reduced, unfound)
   where
-    aliases = filter isAlias arts
-    reqs = filter isPlain arts
-    refs = filter isRef arts
+    reduced = catMaybes $ map (`fromRef` als ) refs
+    unfound = []
 
 parseAct root force = do
-   (reqs,refs,aliases) <- liftM splitArtifacts $ parseDir root
-   downloaded      <- parseFile "downloaded.3dp-manifest"
-   available       <- parseFile "available.3dp-manifest"
+   (als, refs, its) <- parseDir root
+   downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
+   available        <- liftM siFromXml $ readFile "available.3dp-manifest"
+   foundRefs        <- return $ catMaybes $ map (`fromRef` als ) refs
+   needToDownload   <- return $ its ++ (map siItem downloaded \\ foundRefs)
+   existsItems      <- return $ map siItem available `intersect` needToDownload
+   -- print available
+   print needToDownload
+   print $ "can download " ++ (show existsItems)
+   -- print als
+   -- print refs
    return ()
-   print reqs
-   print aliases
-   print refs
 
+
+-- look for aliase references and items in directory
+-- there is no need to search for ServerItems since they stored
+-- in available and downloaded manifest only
+-- parseDir :: FilePath -> IO ([Alias],[RefItem],[Item])
+parseDir root = do --(als, refs, its)
+      find always (extension ==? ".3dp-manifest" ) root
+   >>= mapM readFile
+   >>= \xmls -> return (map aiFromXml xmls)
+   --TODO: warn against duplicates
+   >>= \als  -> return (map riFromXml xmls)
+   >>= \refs -> return (map itFromXml xmls)
+   >>= \its  -> return (foldl Map.union Map.empty als, concat refs, concat its)
 
 getAct :: String -> String -> IO ()
 getAct = undefined
-
--- parseAct :: FilePath -> Bool -> IO ()
--- -- parseAct root force =
--- --   let
--- --       -- serverArts = parseFile "available.3dp-manifest"
--- --       -- availArts = parseFile "downloaded.3dp-manifest"
--- --       dirArts = parseDir root -- all items found
--- --       aliases = liftM (filter isAlias) dirArts
--- --       reqs    = liftM2 (\\) dirArts aliases
--- --
--- --   in
--- --       return ()
--- --   >>  aliases
--- --   >>= print
--- --   >>  print "______________________"
--- --   >>  reqs
--- --   >>= print
--- --   -- >>  print <$> aliases
--- --   -- >>  root ++ " dependencies"
--- --   -- >>  print
---

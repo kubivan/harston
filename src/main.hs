@@ -26,7 +26,7 @@ data Options =
 
 parse :: Options
 parse = Parse {
-        dir = "src-dir" &= help "Directory to parse in"
+        dir = "." &= help "Directory to parse in"
       , force = False &= help "force downloading"
       }
 
@@ -39,8 +39,9 @@ get = Get {
      , isForce = False &= help "force downloading"
      }
 
-_TOOL_ABOUT = "3d-party.exe wrapped in Monad :)"
-_TOOL_NAME = "3d-party.exe"
+_TOOL_ABOUT = "Haskell Arifact Storage Management tool \n"
+          ++  "3d-party.exe wrapped in Monad :)"
+_TOOL_NAME = "harstone.exe"
 
 toolModes :: Mode (CmdArgs Options)
 toolModes = cmdArgsMode $ modes [parse, get]
