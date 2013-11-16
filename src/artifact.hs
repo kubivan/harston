@@ -37,7 +37,7 @@ data ServerItem = ServerItem
 
 type Alias = (String, Item)
 
-data RefItem = RefItem
+newtype RefItem = RefItem
     {
       riName :: String
     } deriving (Show, Eq)
