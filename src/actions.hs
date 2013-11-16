@@ -6,35 +6,40 @@ module Actions( parseAct
 import Artifact
 import Control.Monad {- (liftM, liftM2) -}
 import Control.Applicative
-import Data.List ((\\), intersect)
-import Data.Maybe (catMaybes)
+import Data.List ((\\), intersect, partition)
+import Data.Maybe (catMaybes, isJust)
 import qualified Data.Map.Lazy as Map
 import System.FilePath.Find {- (fold, always) -}
 
 fromRef :: RefItem -> Aliases -> Maybe Item
-fromRef ref als =
-    Map.lookup (riName ref) als
+fromRef ref =
+    Map.lookup $ riName ref
 
-
--- returs
-boilToItems :: [RefItem] -> Aliases -> ([Item], [String])
-boilToItems refs als = (reduced, unfound)
+-- boilToItems :: [RefItem] -> Aliases -> ([Item], [RefItem])
+boilToItems (als, refs, its) = (res ++ its, notfound)
   where
-    reduced = catMaybes $ map (`fromRef` als ) refs
-    unfound = []
+  --TODO: optimize
+    (found, notfound) = partition (isJust.(`fromRef` als)) refs
+    res = catMaybes $ map (`fromRef` als) found
 
 parseAct root force = do
-   (als, refs, its) <- parseDir root
-   downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
+   -- downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
+   downloaded       <- return []
    available        <- liftM siFromXml $ readFile "available.3dp-manifest"
-   foundRefs        <- return $ catMaybes $ map (`fromRef` als ) refs
-   needToDownload   <- return $ its ++ (map siItem downloaded \\ foundRefs)
+   (foundItems, nfRefs) <- liftM boilToItems $ parseDir root
+   if (not.null $ nfRefs) then
+      print $ "Warning: the following items do not exist: \n"
+            ++ show nfRefs
+      else return ()
+
+   print foundItems
+   needToDownload   <- return $ if force then
+         foundItems
+      else
+         map siItem downloaded \\ foundItems
+
    existsItems      <- return $ map siItem available `intersect` needToDownload
-   -- print available
-   print needToDownload
-   print $ "can download " ++ (show existsItems)
-   -- print als
-   -- print refs
+   print $ "need to download: \n" ++ (show needToDownload)
    return ()
 
 
@@ -43,7 +48,7 @@ parseAct root force = do
 -- in available and downloaded manifest only
 -- parseDir :: FilePath -> IO ([Alias],[RefItem],[Item])
 parseDir root = do --(als, refs, its)
-      find always (extension ==? ".3dp-manifest" ) root
+       find always (extension ==? ".3dp-manifest" ) root
    >>= mapM readFile
    >>= \xmls -> return (map aiFromXml xmls)
    --TODO: warn against duplicates

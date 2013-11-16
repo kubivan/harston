@@ -50,30 +50,22 @@ type Aliases = Map.Map String Item
 data Platform = Windows | MacOS deriving (Show, Read, Eq)
 
 itFromXml :: XmlString -> [Item]
-itFromXml xml =
-    map plainItem $ fman /> fplain $ doc
-    where
-      doc = contentFromXml xml
+itFromXml = fromXml (fman /> fplain) (plainItem)
 
 siFromXml :: XmlString -> [ServerItem]
-siFromXml xml =
-    map serverItem $ fman /> fserver $ doc
-    where
-      doc = contentFromXml xml
+siFromXml = fromXml (fman /> fserver) (serverItem)
 
 aiFromXml :: XmlString -> Aliases
-aiFromXml xml =
-    Map.fromList al
-    where
-      al = map aliasItem $ fman /> tag "alias" $ doc
-      doc = contentFromXml xml
+aiFromXml xml = Map.fromList $ fromXml (fman /> tag "alias") (aliasItem) xml
 
 riFromXml :: XmlString -> [RefItem]
-riFromXml xml =
-    map refItem $ fman /> fref $ doc
+riFromXml = fromXml (fman /> fref) (refItem)
+
+fromXml :: CFilter Posn -> (Content Posn -> item) -> XmlString -> [item]
+fromXml filter constr xml =
+    map constr $ filter doc
     where
       doc = contentFromXml xml
-
 
 -- auxilary filters
 -- TODO: optimize
