@@ -4,12 +4,16 @@ module Actions( parseAct
               )where
 
 import Artifact
+import Tfs
 import Control.Monad {- (liftM, liftM2) -}
 import Control.Applicative
 import Data.List ((\\), intersect, partition)
 import Data.Maybe (catMaybes, isJust)
 import qualified Data.Map.Lazy as Map
 import System.FilePath.Find {- (fold, always) -}
+import System.Directory
+import Control.Exception(bracket_)
+import qualified Data.List(find)
 
 fromRef :: RefItem -> Aliases -> Maybe Item
 fromRef ref =
@@ -22,9 +26,15 @@ boilToItems (als, refs, its) = (res ++ its, notfound)
     (found, notfound) = partition (isJust.(`fromRef` als)) refs
     res = catMaybes $ map (`fromRef` als) found
 
-parseAct root force = do
-   -- downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
-   downloaded       <- return []
+
+-- m :: [Item] -> [ServerItem] -> [ServerItem]
+m its sits = catMaybes $ zipWith (\it sit -> if it == siItem sit then Just sit else Nothing) its sits
+
+m2 sits its =
+  filter (\si-> isJust (Data.List.find (\it -> it == siItem si) its )) sits
+
+collectSitems root force = do
+   downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
    available        <- liftM siFromXml $ readFile "available.3dp-manifest"
    (foundItems, nfRefs) <- liftM boilToItems $ parseDir root
    if (not.null $ nfRefs) then
@@ -36,11 +46,31 @@ parseAct root force = do
    needToDownload   <- return $ if force then
          foundItems
       else
-         map siItem downloaded \\ foundItems
+         foundItems \\ map siItem downloaded
 
    existsItems      <- return $ map siItem available `intersect` needToDownload
-   print $ "need to download: \n" ++ (show needToDownload)
-   return ()
+   -- print $ "need to download: \n" ++ (show needToDownload)
+   -- print $ "available"
+   return $ m2 available needToDownload
+
+parseAct root force = do
+  items <- collectSitems root force
+  print $ "items \n" ++ show items
+  let ws = "tempws"
+      tf = createTf " " "https://tfs.codeplex.com:443/tfs/TFS24/" ws Nothing
+      rdir = "D:\\3d-party"
+  setCurrentDirectory rdir
+  bracket_ (tfCreateWS tf ws rdir)
+           (tfRemoveWS tf ws)
+           (sequence( map (downloadSitem tf ws) items))
+
+
+downloadSitem tf ws si = do
+    let name  = siName si ++ "_" ++ siVersion si
+        tname = "~" ++ name
+    print $ "Downloading " ++ name
+    tfGet tf (siPath si) tname "" True ws
+    renameDirectory tname name
 
 
 -- look for aliase references and items in directory
