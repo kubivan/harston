@@ -10,59 +10,65 @@ import Control.Applicative
 import Data.List ((\\), intersect, partition)
 import Data.Maybe (catMaybes, isJust)
 import qualified Data.Map.Lazy as Map
-import System.FilePath.Find {- (fold, always) -}
-import System.Directory
+import System.FilePath.Find (find, always, extension, (==?))
+import System.Directory(setCurrentDirectory, getCurrentDirectory, renameDirectory)
 import Control.Exception(bracket_)
-import qualified Data.List(find)
+import qualified Data.List as List (find)
 
 fromRef :: RefItem -> Aliases -> Maybe Item
 fromRef ref =
     Map.lookup $ riName ref
 
--- boilToItems :: [RefItem] -> Aliases -> ([Item], [RefItem])
-boilToItems (als, refs, its) = (res ++ its, notfound)
+--takes item references and aliases and resolves to items
+--along with unresolved references
+resolveRefs:: Aliases -> [RefItem] -> ([Item], [RefItem])
+resolveRefs als refs = (res , notfound)
   where
   --TODO: optimize
     (found, notfound) = partition (isJust.(`fromRef` als)) refs
     res = catMaybes $ map (`fromRef` als) found
 
+--takes list of required items, list of already downloaded items and returns list
+--of items we need to download along with list of "bad" items
+toDownload :: [Item] -> [ServerItem] -> [ServerItem] -> ([ServerItem],[Item])
+toDownload required downloaded available = (foundIn available, [] )
+  where
+    needed = required \\ map siItem downloaded
+    foundIn = filter (`existIn` needed)
+    existIn si = isJust.( List.find (\it -> it == siItem si))
 
--- m :: [Item] -> [ServerItem] -> [ServerItem]
-m its sits = catMaybes $ zipWith (\it sit -> if it == siItem sit then Just sit else Nothing) its sits
+-- takes list of xmlfiles and returns list of required items
+-- along with unresolved references
+getRequiredItems xmls = (reqs, unresolved)
+  where
+    reqs = resolved ++ (concat $ map itFromXml xmls)
+    (resolved, unresolved) = resolveRefs als (concat $ map riFromXml xmls)
+    als  = foldl Map.union Map.empty (map aiFromXml xmls)
 
-m2 sits its =
-  filter (\si-> isJust (Data.List.find (\it -> it == siItem si) its )) sits
+--finds all items we need to download
+collectItems root force= do
+  downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
+  available        <- liftM siFromXml $ readFile "available.3dp-manifest"
+  (required, unresolved) <- liftM getRequiredItems $ parseDir root
+  unless (null unresolved) $ print $ "Warning:unresolved references : \n" ++ show unresolved
+  let (needed, notfound) = toDownload required downloaded available
+  unless (null notfound) $
+    print $ "Warning: the following items not found in available.manifest: \n"
+    ++ show notfound
 
-collectSitems root force = do
-   downloaded       <- liftM siFromXml $ readFile "downloaded.3dp-manifest"
-   available        <- liftM siFromXml $ readFile "available.3dp-manifest"
-   (foundItems, nfRefs) <- liftM boilToItems $ parseDir root
-   if (not.null $ nfRefs) then
-      print $ "Warning: the following items do not exist: \n"
-            ++ show nfRefs
-      else return ()
-
-   print foundItems
-   needToDownload   <- return $ if force then
-         foundItems
-      else
-         foundItems \\ map siItem downloaded
-
-   existsItems      <- return $ map siItem available `intersect` needToDownload
-   -- print $ "need to download: \n" ++ (show needToDownload)
-   -- print $ "available"
-   return $ m2 available needToDownload
+  return needed
 
 parseAct root force = do
-  items <- collectSitems root force
+  items <- collectItems root force
   print $ "items \n" ++ show items
   let ws = "tempws"
       tf = createTf " " "https://tfs.codeplex.com:443/tfs/TFS24/" ws Nothing
       rdir = "D:\\3d-party"
-  setCurrentDirectory rdir
-  bracket_ (tfCreateWS tf ws rdir)
-           (tfRemoveWS tf ws)
-           (sequence( map (downloadSitem tf ws) items))
+
+  old <- getCurrentDirectory
+  bracket_ (setCurrentDirectory rdir >> tfCreateWS tf ws rdir)
+           (setCurrentDirectory old  >> tfRemoveWS tf ws)
+           (sequence $ map (downloadSitem tf ws) items)
 
 
 downloadSitem tf ws si = do
@@ -72,19 +78,7 @@ downloadSitem tf ws si = do
     tfGet tf (siPath si) tname "" True ws
     renameDirectory tname name
 
-
--- look for aliase references and items in directory
--- there is no need to search for ServerItems since they stored
--- in available and downloaded manifest only
--- parseDir :: FilePath -> IO ([Alias],[RefItem],[Item])
-parseDir root = do --(als, refs, its)
-       find always (extension ==? ".3dp-manifest" ) root
-   >>= mapM readFile
-   >>= \xmls -> return (map aiFromXml xmls)
-   --TODO: warn against duplicates
-   >>= \als  -> return (map riFromXml xmls)
-   >>= \refs -> return (map itFromXml xmls)
-   >>= \its  -> return (foldl Map.union Map.empty als, concat refs, concat its)
+parseDir root = find always (extension ==? ".3dp-manifest" ) root >>= mapM readFile
 
 getAct :: String -> String -> IO ()
 getAct = undefined

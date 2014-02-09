@@ -2,6 +2,9 @@
 module Artifact
              ( Item (itName, itVersion, itPlatform)
              , ServerItem (siPath, siItem)
+             , siName
+             , siVersion
+             , siPlatform
              , RefItem (riName)
              , Artifacts
              , Aliases
@@ -27,13 +30,18 @@ data Item =
       itName :: String
     , itVersion :: String
     , itPlatform :: Platform
-    } deriving (Show, Eq)
+    } deriving (Show, Eq, Ord)
 
 data ServerItem = ServerItem
     {
       siPath :: String
+    , siChangeset:: Maybe String
     , siItem :: Item
-    }deriving (Show, Eq)
+    }deriving (Show, Eq, Ord)
+
+siName = itName.siItem
+siVersion = itVersion.siItem
+siPlatform = itPlatform.siItem
 
 type Alias = (String, Item)
 
@@ -47,7 +55,7 @@ type XmlString = String
 type Artifacts = ([Item], [RefItem], Aliases, [ServerItem])
 type Aliases = Map.Map String Item
 
-data Platform = Windows | MacOS deriving (Show, Read, Eq)
+data Platform = Windows | MacOS deriving (Show, Read, Eq, Ord)
 
 itFromXml :: XmlString -> [Item]
 itFromXml = fromXml (fman /> fplain) (plainItem)
@@ -84,10 +92,12 @@ plainItem item = Item name vers platform
       platform = read.contentToStr.showattr "Platforms" $ item
 
 serverItem :: Content Posn -> ServerItem
-serverItem citem = ServerItem path plain
+serverItem citem = ServerItem path changeset $ plainItem citem
   where
-    path =  contentToStr.(keep /> tag "path" /> txt) $ citem
-    plain = plainItem citem
+    (path, cset) = break(==':') $ contentToStr.(keep /> tag "path" /> txt) $ citem
+    changeset = case cset of
+      ':':res -> Just res
+      _       -> Nothing
 
 aliasItem :: Content Posn -> Alias
 aliasItem citem = (name, it)

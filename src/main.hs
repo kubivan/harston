@@ -61,12 +61,12 @@ main = do
   opts <- (if null args then withArgs ["--help"] else id) $ cmdArgsRun toolModes
   optionsHandler opts
 
-
 optionsHandler :: Options -> IO ()
 optionsHandler opts@(Parse dir force ) = do
     putStrLn $ "lets parse in " ++ dir
     print $ "force :" ++ show force
-    parseAct dir False{- force -}
+    parseAct dir force
+    return ()
 optionsHandler opts@(Get name vers platform l f) = do
     putStrLn $ "lets get " ++ name ++ vers
     getAct name vers
