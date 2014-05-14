@@ -66,8 +66,8 @@ parseAct root force = do
       rdir = "D:\\3d-party"
 
   old <- getCurrentDirectory
-  bracket_ (setCurrentDirectory rdir >> tfCreateWS tf ws rdir)
-           (setCurrentDirectory old  >> tfRemoveWS tf ws)
+  bracket_ (setCurrentDirectory rdir >> (runMaybeT $ tfCreateWS tf ws rdir))
+           (setCurrentDirectory old  >> (runMaybeT $ tfRemoveWS tf ws))
            (sequence $ map (downloadSitem tf ws) items)
 
 
@@ -75,7 +75,7 @@ downloadSitem tf ws si = do
     let name  = siName si ++ "_" ++ siVersion si
         tname = "~" ++ name
     print $ "Downloading " ++ name
-    tfGet tf (siPath si) tname "" True ws
+    runMaybeT $ tfGet tf (siPath si) tname "" True ws
     renameDirectory tname name
 
 parseDir root = find always (extension ==? ".3dp-manifest" ) root >>= mapM readFile
